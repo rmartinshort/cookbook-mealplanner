@@ -704,3 +704,41 @@ def format_history_for_llm(
             lines.append("   - No option was chosen")
 
     return "\n".join(lines)
+
+
+def delete_plan_history(user_id: str) -> int:
+    """
+    Delete all dinner plan history for a user.
+
+    Args:
+        user_id: User ID
+
+    Returns:
+        Number of requests deleted
+    """
+    db = get_db()
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Get count of requests to be deleted
+        cursor.execute(
+            """
+            SELECT COUNT(*) as count FROM dinner_plan_requests
+            WHERE user_id = ?
+        """,
+            (user_id,),
+        )
+        count = cursor.fetchone()["count"]
+
+        # Delete requests (options will be deleted via CASCADE)
+        cursor.execute(
+            """
+            DELETE FROM dinner_plan_requests
+            WHERE user_id = ?
+        """,
+            (user_id,),
+        )
+
+        conn.commit()
+        return count

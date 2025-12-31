@@ -78,6 +78,7 @@ class MealPlanner:
         preferences: Optional[str] = None,
         excluded_ingredients: Optional[List[str]] = None,
         user_id: str = "default",
+        use_history: bool = True,
     ) -> List[DinnerPlan]:
         """
         Create multiple dinner plan options using available recipes with history context.
@@ -89,6 +90,7 @@ class MealPlanner:
             preferences: User preferences (e.g., "vegetarian", "lots of vegetables")
             excluded_ingredients: List of ingredients to avoid
             user_id: User ID for retrieving plan history (default "default")
+            use_history: Whether to use past plan history for recommendations (default True)
 
         Returns:
             List of DinnerPlan objects, one for each option
@@ -99,9 +101,12 @@ class MealPlanner:
         if not recipes:
             raise ValueError("No recipes available in database. Import recipes first.")
 
-        # Get plan history for context
-        history = get_plan_history(user_id, limit=10)
-        history_context = format_history_for_llm(history)
+        # Get plan history for context (if enabled)
+        if use_history:
+            history = get_plan_history(user_id, limit=10)
+            history_context = format_history_for_llm(history)
+        else:
+            history_context = "No previous history used for this generation."
 
         # Build recipe context for LLM
         recipe_context = self._build_recipe_context(recipes)
