@@ -139,3 +139,53 @@ class SyncFile(BaseModel):
     sync_status: str  # 'synced', 'pending', 'error'
     file_type: str  # 'pdf', 'jpeg', 'jpg', 'png'
     error_message: Optional[str] = None
+
+
+class DinnerPlanRequest(BaseModel):
+    """A user request to generate dinner plan options."""
+
+    id: Optional[int] = None
+    user_id: str = Field(
+        default="default", description="User ID for multi-user support"
+    )
+    num_days: int = Field(description="Number of days to plan dinners for")
+    servings: int = Field(description="Number of servings per dinner")
+    preferences: Optional[str] = Field(
+        default=None, description="User dietary preferences or constraints"
+    )
+    num_options: int = Field(
+        default=3, description="Number of plan options to generate"
+    )
+    chosen_option_index: Optional[int] = Field(
+        default=None, description="Index of the option the user chose (0-based)"
+    )
+    created_at: Optional[str] = None
+
+
+class DinnerPlanOption(BaseModel):
+    """One generated dinner plan option for a request."""
+
+    id: Optional[int] = None
+    request_id: int = Field(description="ID of the parent DinnerPlanRequest")
+    option_index: int = Field(description="Index of this option (0-based)")
+    plan_json: str = Field(
+        description="JSON representation of the DinnerPlan (list of dinners)"
+    )
+    reasoning: str = Field(
+        description="LLM reasoning for why this plan was created"
+    )
+
+
+class DinnerPlan(BaseModel):
+    """A complete dinner plan with multiple days and reasoning."""
+
+    dinners: List[dict] = Field(
+        description="List of dinners, each with day, recipe_id, and recipe_title"
+    )
+    reasoning: str = Field(
+        description="Explanation of why these recipes were chosen"
+    )
+
+    def get_all_recipe_ids(self) -> List[int]:
+        """Extract all recipe IDs from the dinner plan."""
+        return [dinner["recipe_id"] for dinner in self.dinners]

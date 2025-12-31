@@ -7,27 +7,12 @@ from typing import List, Optional
 from google import genai
 
 from cookplanner.config import Config
-from cookplanner.models.orm import list_recipes
-from cookplanner.models.schema import Recipe
-
-
-class DinnerPlan:
-    """Represents a weekly dinner plan."""
-
-    def __init__(self, dinners: List[dict], reasoning: str = ""):
-        """
-        Initialize dinner plan.
-
-        Args:
-            dinners: List of dinner dictionaries with recipe info
-            reasoning: LLM explanation of the plan
-        """
-        self.dinners = dinners
-        self.reasoning = reasoning
-
-    def get_all_recipe_ids(self) -> List[int]:
-        """Get all recipe IDs used in this dinner plan."""
-        return [dinner["recipe_id"] for dinner in self.dinners if "recipe_id" in dinner]
+from cookplanner.models.orm import (
+    list_recipes,
+    get_plan_history,
+    format_history_for_llm,
+)
+from cookplanner.models.schema import Recipe, DinnerPlan
 
 
 class MealPlanner:
@@ -84,6 +69,69 @@ class MealPlanner:
         dinner_plan = self._parse_dinner_plan_response(response.text, recipes)
 
         return dinner_plan
+
+    def create_dinner_plan_options(
+        self,
+        num_days: int = 7,
+        servings: int = 2,
+        num_options: int = 3,
+        preferences: Optional[str] = None,
+        excluded_ingredients: Optional[List[str]] = None,
+        user_id: str = "default",
+    ) -> List[DinnerPlan]:
+        """
+        Create multiple dinner plan options using available recipes with history context.
+
+        Args:
+            num_days: Number of days to plan (default 7)
+            servings: Number of servings per dinner (default 2)
+            num_options: Number of different plan options to generate (default 3)
+            preferences: User preferences (e.g., "vegetarian", "lots of vegetables")
+            excluded_ingredients: List of ingredients to avoid
+            user_id: User ID for retrieving plan history (default "default")
+
+        Returns:
+            List of DinnerPlan objects, one for each option
+        """
+        # Load all available recipes
+        recipes = list_recipes(limit=None)
+
+        if not recipes:
+            raise ValueError("No recipes available in database. Import recipes first.")
+
+        # Get plan history for context
+        history = get_plan_history(user_id, limit=10)
+        history_context = format_history_for_llm(history)
+
+        # Build recipe context for LLM
+        recipe_context = self._build_recipe_context(recipes)
+
+        # Generate multiple options
+        plans = []
+        for i in range(num_options):
+            # Create prompt with history and option number
+            prompt = self._build_dinner_plan_options_prompt(
+                recipe_context=recipe_context,
+                history_context=history_context,
+                num_days=num_days,
+                servings=servings,
+                preferences=preferences,
+                excluded_ingredients=excluded_ingredients,
+                option_number=i + 1,
+                total_options=num_options,
+                previously_generated=plans,
+            )
+
+            # Generate plan using Gemini
+            response = self.client.models.generate_content(
+                model=self.model_name, contents=prompt
+            )
+
+            # Parse response and create DinnerPlan
+            dinner_plan = self._parse_dinner_plan_response(response.text, recipes)
+            plans.append(dinner_plan)
+
+        return plans
 
     def _build_recipe_context(self, recipes: List[Recipe]) -> str:
         """Build a context string with all available recipes."""
@@ -147,6 +195,69 @@ Important:
 - ONLY use recipe IDs from the list above
 - Include the recipe ID number for EVERY day
 - Keep recipe names exactly as shown in the recipe list
+"""
+
+        return prompt
+
+    def _build_dinner_plan_options_prompt(
+        self,
+        recipe_context: str,
+        history_context: str,
+        num_days: int,
+        servings: int,
+        preferences: Optional[str],
+        excluded_ingredients: Optional[List[str]],
+        option_number: int,
+        total_options: int,
+        previously_generated: List[DinnerPlan],
+    ) -> str:
+        """Build the prompt for dinner planning with history and variety."""
+        prompt = f"""You are a dinner planning assistant. Create a {num_days}-day dinner plan using ONLY the recipes provided below.
+
+This is option {option_number} of {total_options} different plans you will generate. Make this option distinct from the others.
+
+{recipe_context}
+
+{history_context}
+
+Requirements:
+- Plan dinners for {servings} people
+- Use a variety of recipes to keep dinners interesting
+- Consider nutritional balance across the week
+- Use different recipes each day when possible
+- Learn from the user's previous choices (if any) to better match their preferences
+"""
+
+        if preferences:
+            prompt += f"- User preferences: {preferences}\n"
+
+        if excluded_ingredients:
+            excluded = ", ".join(excluded_ingredients)
+            prompt += f"- Avoid recipes with these ingredients: {excluded}\n"
+
+        # Add context about previously generated options to ensure variety
+        if previously_generated:
+            prompt += "\nPreviously generated options:\n"
+            for idx, plan in enumerate(previously_generated, 1):
+                recipe_ids = [str(d["recipe_id"]) for d in plan.dinners]
+                prompt += f"Option {idx}: Uses recipe IDs: {', '.join(recipe_ids)}\n"
+            prompt += "\nMake sure THIS option is DIFFERENT from the ones above. Use different recipes.\n"
+
+        prompt += """
+Output Format (use this EXACT format):
+Day 1: Recipe ID X - [Recipe Title]
+Day 2: Recipe ID Y - [Recipe Title]
+Day 3: Recipe ID Z - [Recipe Title]
+...
+
+REASONING:
+[Explain your choices, considering variety, nutrition, balance, and user's past preferences]
+
+Important:
+- ONLY use recipe IDs from the list above
+- Include the recipe ID number for EVERY day
+- Keep recipe names exactly as shown in the recipe list
+- Make this option different from any previously generated options
 """
 
         return prompt

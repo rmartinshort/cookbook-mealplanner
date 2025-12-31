@@ -13,6 +13,9 @@ from cookplanner.models.schema import (
     Ingredient,
     Instruction,
     SyncFile,
+    DinnerPlanRequest,
+    DinnerPlanOption,
+    DinnerPlan,
 )
 
 
@@ -462,3 +465,242 @@ def list_sync_files(status: Optional[str] = None) -> List[SyncFile]:
             )
 
     return sync_files
+
+
+# Dinner plan operations
+
+
+def save_dinner_plan_request(
+    user_id: str,
+    num_days: int,
+    servings: int,
+    preferences: Optional[str] = None,
+    num_options: int = 3,
+) -> int:
+    """
+    Save a new dinner plan request.
+
+    Args:
+        user_id: User ID
+        num_days: Number of days to plan
+        servings: Servings per dinner
+        preferences: Optional dietary preferences
+        num_options: Number of options to generate
+
+    Returns:
+        The ID of the created request
+    """
+    db = get_db()
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO dinner_plan_requests (
+                user_id, num_days, servings, preferences, num_options
+            ) VALUES (?, ?, ?, ?, ?)
+        """,
+            (user_id, num_days, servings, preferences, num_options),
+        )
+
+        conn.commit()
+        return cursor.lastrowid
+
+
+def save_dinner_plan_option(
+    request_id: int, option_index: int, plan: DinnerPlan
+) -> int:
+    """
+    Save a generated dinner plan option.
+
+    Args:
+        request_id: ID of the parent request
+        option_index: Index of this option (0-based)
+        plan: DinnerPlan object
+
+    Returns:
+        The ID of the created option
+    """
+    db = get_db()
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Convert plan to JSON, excluding non-serializable Recipe objects
+        dinners_for_json = []
+        for dinner in plan.dinners:
+            # Create a copy without the Recipe object
+            dinner_dict = {
+                "day": dinner.get("day"),
+                "recipe_id": dinner.get("recipe_id"),
+                "recipe_title": dinner.get("recipe_title"),
+            }
+            dinners_for_json.append(dinner_dict)
+
+        plan_json = json.dumps(
+            {"dinners": dinners_for_json, "reasoning": plan.reasoning}
+        )
+
+        cursor.execute(
+            """
+            INSERT INTO dinner_plan_options (
+                request_id, option_index, plan_json, reasoning
+            ) VALUES (?, ?, ?, ?)
+        """,
+            (request_id, option_index, plan_json, plan.reasoning),
+        )
+
+        conn.commit()
+        return cursor.lastrowid
+
+
+def update_chosen_option(request_id: int, chosen_index: int) -> None:
+    """
+    Update a dinner plan request with the user's chosen option.
+
+    Args:
+        request_id: ID of the request
+        chosen_index: Index of the chosen option (0-based)
+    """
+    db = get_db()
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            UPDATE dinner_plan_requests
+            SET chosen_option_index = ?
+            WHERE id = ?
+        """,
+            (chosen_index, request_id),
+        )
+
+        conn.commit()
+
+
+def get_plan_history(
+    user_id: str, limit: int = 10
+) -> List[tuple[DinnerPlanRequest, List[DinnerPlanOption]]]:
+    """
+    Get dinner plan history for a user.
+
+    Args:
+        user_id: User ID
+        limit: Maximum number of requests to return
+
+    Returns:
+        List of tuples: (request, list of options)
+    """
+    db = get_db()
+    history = []
+
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+
+        # Get requests
+        cursor.execute(
+            """
+            SELECT * FROM dinner_plan_requests
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+        """,
+            (user_id, limit),
+        )
+
+        requests = cursor.fetchall()
+
+        for req_row in requests:
+            # Get options for this request
+            cursor.execute(
+                """
+                SELECT * FROM dinner_plan_options
+                WHERE request_id = ?
+                ORDER BY option_index
+            """,
+                (req_row["id"],),
+            )
+
+            options = []
+            for opt_row in cursor.fetchall():
+                # Parse the plan JSON
+                plan_data = json.loads(opt_row["plan_json"])
+
+                options.append(
+                    DinnerPlanOption(
+                        id=opt_row["id"],
+                        request_id=opt_row["request_id"],
+                        option_index=opt_row["option_index"],
+                        plan_json=opt_row["plan_json"],
+                        reasoning=opt_row["reasoning"],
+                    )
+                )
+
+            request = DinnerPlanRequest(
+                id=req_row["id"],
+                user_id=req_row["user_id"],
+                num_days=req_row["num_days"],
+                servings=req_row["servings"],
+                preferences=req_row["preferences"],
+                num_options=req_row["num_options"],
+                chosen_option_index=req_row["chosen_option_index"],
+                created_at=req_row["created_at"],
+            )
+
+            history.append((request, options))
+
+    return history
+
+
+def format_history_for_llm(
+    history: List[tuple[DinnerPlanRequest, List[DinnerPlanOption]]]
+) -> str:
+    """
+    Format plan history into a text summary for LLM context.
+
+    Args:
+        history: List of (request, options) tuples from get_plan_history
+
+    Returns:
+        Formatted text summary of past choices
+    """
+    if not history:
+        return "No previous dinner plans found."
+
+    lines = ["Previous Dinner Plans:"]
+
+    for i, (request, options) in enumerate(history, 1):
+        lines.append(f"\n{i}. Request from {request.created_at}:")
+        lines.append(f"   - {request.num_days} days, {request.servings} servings")
+
+        if request.preferences:
+            lines.append(f"   - Preferences: {request.preferences}")
+
+        # Find chosen option
+        if request.chosen_option_index is not None:
+            chosen_option = next(
+                (
+                    opt
+                    for opt in options
+                    if opt.option_index == request.chosen_option_index
+                ),
+                None,
+            )
+
+            if chosen_option:
+                lines.append(f"   - User CHOSE option #{request.chosen_option_index + 1}:")
+
+                # Parse and display the chosen plan
+                plan_data = json.loads(chosen_option.plan_json)
+                for dinner in plan_data.get("dinners", []):
+                    lines.append(
+                        f"     * {dinner.get('day')}: {dinner.get('recipe_title')}"
+                    )
+
+                lines.append(f"   - Reasoning: {chosen_option.reasoning}")
+        else:
+            lines.append("   - No option was chosen")
+
+    return "\n".join(lines)

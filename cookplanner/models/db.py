@@ -106,6 +106,32 @@ class Database:
                 )
             """)
 
+            # Dinner plan requests table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS dinner_plan_requests (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT DEFAULT 'default',
+                    num_days INTEGER NOT NULL,
+                    servings INTEGER NOT NULL,
+                    preferences TEXT,
+                    num_options INTEGER DEFAULT 3,
+                    chosen_option_index INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+            # Dinner plan options table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS dinner_plan_options (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    request_id INTEGER NOT NULL,
+                    option_index INTEGER NOT NULL,
+                    plan_json TEXT NOT NULL,
+                    reasoning TEXT,
+                    FOREIGN KEY (request_id) REFERENCES dinner_plan_requests (id) ON DELETE CASCADE
+                )
+            """)
+
             # Create indexes for better query performance
             cursor.execute("""
                 CREATE INDEX IF NOT EXISTS idx_recipes_title_en
@@ -132,12 +158,24 @@ class Database:
                 ON sync_files(drive_file_id)
             """)
 
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_dinner_plan_requests_user
+                ON dinner_plan_requests(user_id, created_at DESC)
+            """)
+
+            cursor.execute("""
+                CREATE INDEX IF NOT EXISTS idx_dinner_plan_options_request
+                ON dinner_plan_options(request_id)
+            """)
+
             conn.commit()
 
     def drop_all_tables(self):
         """Drop all tables. Use with caution!"""
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute("DROP TABLE IF EXISTS dinner_plan_options")
+            cursor.execute("DROP TABLE IF EXISTS dinner_plan_requests")
             cursor.execute("DROP TABLE IF EXISTS instructions")
             cursor.execute("DROP TABLE IF EXISTS ingredients")
             cursor.execute("DROP TABLE IF EXISTS recipes")

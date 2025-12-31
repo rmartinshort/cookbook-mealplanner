@@ -11,7 +11,14 @@ from rich.table import Table
 
 from cookplanner.config import Config
 from cookplanner.models.db import init_database
-from cookplanner.models.orm import list_recipes, get_recipe, search_recipes
+from cookplanner.models.orm import (
+    list_recipes,
+    get_recipe,
+    search_recipes,
+    save_dinner_plan_request,
+    save_dinner_plan_option,
+    update_chosen_option,
+)
 from cookplanner.sync.file_sync import sync_from_drive
 from cookplanner.extraction.extract_recipe import RecipeExtractor
 from cookplanner.planning.meal_planner import MealPlanner
@@ -288,39 +295,113 @@ def plan_dinners(
     days: int = typer.Option(7, help="Number of days to plan"),
     servings: int = typer.Option(2, help="Servings per dinner"),
     preferences: Optional[str] = typer.Option(None, help="Dietary preferences"),
+    num_options: int = typer.Option(3, help="Number of plan options to generate"),
+    user_id: str = typer.Option("default", help="User ID for tracking preferences"),
 ):
-    """Generate a weekly dinner plan using available recipes."""
+    """Generate multiple dinner plan options and choose one."""
     try:
         Config.validate()
-        console.print(f"[bold blue]Generating {days}-day dinner plan...[/bold blue]\n")
-
-        planner = MealPlanner()
-        dinner_plan = planner.create_dinner_plan(
-            num_days=days, servings=servings, preferences=preferences
+        console.print(
+            f"[bold blue]Generating {num_options} different {days}-day dinner plans...[/bold blue]\n"
         )
 
-        if not dinner_plan.dinners:
-            console.print("[yellow]Could not generate dinner plan[/yellow]")
+        # Generate multiple plan options
+        planner = MealPlanner()
+        plan_options = planner.create_dinner_plan_options(
+            num_days=days,
+            servings=servings,
+            num_options=num_options,
+            preferences=preferences,
+            user_id=user_id,
+        )
+
+        if not plan_options:
+            console.print("[yellow]Could not generate dinner plans[/yellow]")
             return
 
-        # Display the plan
-        console.print("[bold green]Your Dinner Plan:[/bold green]\n")
+        # Save request to database
+        request_id = save_dinner_plan_request(
+            user_id=user_id,
+            num_days=days,
+            servings=servings,
+            preferences=preferences,
+            num_options=num_options,
+        )
 
-        for dinner in dinner_plan.dinners:
+        # Save all options to database
+        for idx, plan in enumerate(plan_options):
+            save_dinner_plan_option(request_id=request_id, option_index=idx, plan=plan)
+
+        # Display all options
+        console.print("[bold green]Here are your dinner plan options:[/bold green]\n")
+
+        for idx, plan in enumerate(plan_options, 1):
+            console.print(f"[bold cyan]Option {idx}:[/bold cyan]")
+
+            if not plan.dinners:
+                console.print("  [yellow]No dinners in this plan[/yellow]\n")
+                continue
+
+            for dinner in plan.dinners:
+                console.print(
+                    f"  {dinner['day']}: {dinner['recipe_title']} "
+                    f"[dim](ID: {dinner['recipe_id']})[/dim]"
+                )
+
+            # Display reasoning
+            if plan.reasoning:
+                console.print(f"\n  [bold]Why this plan:[/bold]")
+                # Truncate reasoning if too long
+                reasoning_lines = plan.reasoning.split("\n")[:3]
+                for line in reasoning_lines:
+                    console.print(f"  {line}")
+                if len(plan.reasoning.split("\n")) > 3:
+                    console.print("  [dim]...[/dim]")
+
+            console.print()  # Blank line between options
+
+        # Ask user to choose
+        console.print("[bold]Which option do you prefer?[/bold]")
+        choice = typer.prompt(
+            f"Enter option number (1-{num_options})",
+            type=int,
+            default=1,
+        )
+
+        # Validate choice
+        if choice < 1 or choice > num_options:
+            console.print(f"[red]Invalid choice. Must be between 1 and {num_options}[/red]")
+            raise typer.Exit(code=1)
+
+        # Update database with chosen option
+        chosen_index = choice - 1  # Convert to 0-based index
+        update_chosen_option(request_id, chosen_index)
+
+        chosen_plan = plan_options[chosen_index]
+
+        # Display chosen plan
+        console.print(f"\n[bold green]✓ Great choice! Here's your selected plan:[/bold green]\n")
+
+        for dinner in chosen_plan.dinners:
             console.print(
                 f"[cyan]{dinner['day']}:[/cyan] {dinner['recipe_title']} "
                 f"[dim](Recipe ID: {dinner['recipe_id']})[/dim]"
             )
 
-        # Display reasoning
-        if dinner_plan.reasoning:
-            console.print(f"\n[bold]Planning Notes:[/bold]")
-            console.print(dinner_plan.reasoning)
+        # Display full reasoning for chosen plan
+        if chosen_plan.reasoning:
+            console.print(f"\n[bold]Why this plan works:[/bold]")
+            console.print(chosen_plan.reasoning)
 
         # Show next steps
+        recipe_ids_str = " ".join(map(str, chosen_plan.get_all_recipe_ids()))
         console.print(
             f"\n[dim]Tip: Generate a shopping list with:[/dim] "
-            f"[green]shopping-list {' '.join(map(str, dinner_plan.get_all_recipe_ids()))}[/green]"
+            f"[green]cookplanner shopping-list {recipe_ids_str}[/green]"
+        )
+        console.print(
+            f"[dim]Or for a practical, consolidated list:[/dim] "
+            f"[green]cookplanner shopping-list --consolidate {recipe_ids_str}[/green]"
         )
 
     except Exception as e:
@@ -329,7 +410,12 @@ def plan_dinners(
 
 
 @app.command()
-def shopping_list(recipe_ids: List[int] = typer.Argument(..., help="Recipe IDs")):
+def shopping_list(
+    recipe_ids: List[int] = typer.Argument(..., help="Recipe IDs"),
+    consolidate: bool = typer.Option(
+        False, "--consolidate", "-c", help="Use AI to consolidate into practical shopping list"
+    ),
+):
     """Generate a shopping list from recipe IDs."""
     try:
         if not recipe_ids:
@@ -347,7 +433,15 @@ def shopping_list(recipe_ids: List[int] = typer.Argument(..., help="Recipe IDs")
             console.print("[yellow]No ingredients found[/yellow]")
             return
 
-        # Display shopping list by category
+        # If consolidate flag is set, use LLM to create practical list
+        if consolidate:
+            console.print("[bold blue]Consolidating with AI for practical shopping...[/bold blue]\n")
+            consolidated_text = generator.consolidate_with_llm(shopping_list)
+            console.print("[bold green]Consolidated Shopping List:[/bold green]\n")
+            console.print(consolidated_text)
+            return
+
+        # Display raw aggregated shopping list by category
         console.print("[bold green]Shopping List:[/bold green]\n")
 
         for category in shopping_list.get_categories():
@@ -370,6 +464,9 @@ def shopping_list(recipe_ids: List[int] = typer.Argument(..., help="Recipe IDs")
 
         console.print(
             f"[dim]Total ingredients: {sum(len(shopping_list.get_items_by_category(cat)) for cat in shopping_list.get_categories())}[/dim]"
+        )
+        console.print(
+            f"\n[dim]Tip: Use --consolidate flag for AI-powered practical shopping list[/dim]"
         )
 
     except Exception as e:
