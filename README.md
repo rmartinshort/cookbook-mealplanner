@@ -1,4 +1,4 @@
-# 🏠 Housewife AI - Japanese Cookbook Meal Planner
+# 🏠 Cookplan AI - Japanese Cookbook Meal Planner
 
 AI-powered meal planning system that extracts recipes from Japanese cookbooks and generates personalized weekly dinner plans with consolidated shopping lists.
 
@@ -365,6 +365,7 @@ See LICENSE file for details.
 ## 🙏 Acknowledgments
 
 - Powered by Google Gemini AI
+- Coding credit mainly to Claude Code
 - Built with Streamlit, Typer, and Rich
 - Inspired by the need to make Japanese cookbook recipes more accessible
 
