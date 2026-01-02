@@ -9,7 +9,6 @@ from google import genai
 
 from cookplanner.config import Config
 from cookplanner.models.orm import get_recipe
-from cookplanner.models.schema import Ingredient
 
 
 class ShoppingList:
@@ -295,7 +294,9 @@ Please provide a consolidated, practical shopping list organized by category. Be
                 name = item["name_en"]
 
                 if len(item["recipes"]) > 1:
-                    lines.append(f"  • {qty_unit} {name} (used in {len(item['recipes'])} recipes)")
+                    lines.append(
+                        f"  • {qty_unit} {name} (used in {len(item['recipes'])} recipes)"
+                    )
                 else:
                     lines.append(f"  • {qty_unit} {name}")
 

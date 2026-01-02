@@ -655,7 +655,7 @@ def get_plan_history(
 
 
 def format_history_for_llm(
-    history: List[tuple[DinnerPlanRequest, List[DinnerPlanOption]]]
+    history: List[tuple[DinnerPlanRequest, List[DinnerPlanOption]]],
 ) -> str:
     """
     Format plan history into a text summary for LLM context.
@@ -690,7 +690,9 @@ def format_history_for_llm(
             )
 
             if chosen_option:
-                lines.append(f"   - User CHOSE option #{request.chosen_option_index + 1}:")
+                lines.append(
+                    f"   - User CHOSE option #{request.chosen_option_index + 1}:"
+                )
 
                 # Parse and display the chosen plan
                 plan_data = json.loads(chosen_option.plan_json)

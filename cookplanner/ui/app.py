@@ -4,7 +4,7 @@ Provides an intuitive interface for generating meal plans and shopping lists.
 """
 
 import streamlit as st
-from typing import List, Optional
+from typing import List
 
 from cookplanner.config import Config
 from cookplanner.models.schema import DinnerPlan
@@ -102,7 +102,11 @@ def reset_session():
 
 
 def generate_meal_plans(
-    num_days: int, servings: int, num_options: int, preferences: str, use_history: bool = True
+    num_days: int,
+    servings: int,
+    num_options: int,
+    preferences: str,
+    use_history: bool = True,
 ) -> List[DinnerPlan]:
     """Generate multiple meal plan options."""
     # Get and store history context for transparency (if enabled)
@@ -161,7 +165,12 @@ def generate_shopping_list(plan: DinnerPlan) -> str:
     return consolidated
 
 
-def display_meal_plan(plan: DinnerPlan, option_number: int, show_full_reasoning: bool = False, show_recipe_details: bool = False):
+def display_meal_plan(
+    plan: DinnerPlan,
+    option_number: int,
+    show_full_reasoning: bool = False,
+    show_recipe_details: bool = False,
+):
     """Display a single meal plan option."""
     st.markdown(f"### Option {option_number}")
 
@@ -190,8 +199,10 @@ def display_meal_plan(plan: DinnerPlan, option_number: int, show_full_reasoning:
     if show_recipe_details:
         st.markdown("**📖 Recipe Details:**")
         for dinner in plan.dinners:
-            with st.expander(f"{dinner['day']}: {dinner['recipe_title']}", expanded=False):
-                display_recipe_details(dinner['recipe_id'], dinner['recipe_title'])
+            with st.expander(
+                f"{dinner['day']}: {dinner['recipe_title']}", expanded=False
+            ):
+                display_recipe_details(dinner["recipe_id"], dinner["recipe_title"])
 
 
 def display_recipe_details(recipe_id: int, recipe_title: str):
@@ -265,7 +276,9 @@ def main():
         st.stop()
 
     # Header
-    st.markdown('<div class="main-header">🏠👩‍🍳 Cookplan AI</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="main-header">🏠👩‍🍳 Cookplan AI</div>', unsafe_allow_html=True
+    )
     st.markdown(
         '<div class="sub-header">Your AI-Powered Meal Planning Assistant</div>',
         unsafe_allow_html=True,
@@ -315,7 +328,10 @@ def main():
     with col1:
         use_history = st.radio(
             "Plan History Usage",
-            options=["Use history (AI learns from past choices)", "Don't use history (fresh start)"],
+            options=[
+                "Use history (AI learns from past choices)",
+                "Don't use history (fresh start)",
+            ],
             index=0,
             help="Choose whether the AI should learn from your previous meal plan selections",
             horizontal=True,
@@ -325,7 +341,9 @@ def main():
     with col2:
         # Delete history button with confirmation
         if not st.session_state.show_delete_confirmation:
-            if st.button("🗑️ Delete History", help="Permanently delete all your plan history"):
+            if st.button(
+                "🗑️ Delete History", help="Permanently delete all your plan history"
+            ):
                 # Check if there's any history
                 history = get_plan_history(st.session_state.user_id, limit=1000)
                 if len(history) == 0:
@@ -340,7 +358,9 @@ def main():
 
             col_a, col_b = st.columns(2)
             with col_a:
-                if st.button(f"⚠️ Confirm Delete", type="secondary", use_container_width=True):
+                if st.button(
+                    "⚠️ Confirm Delete", type="secondary", use_container_width=True
+                ):
                     deleted_count = delete_plan_history(st.session_state.user_id)
                     st.success(f"✅ Deleted {deleted_count} plan(s)!")
                     st.session_state.show_delete_confirmation = False
@@ -359,9 +379,13 @@ def main():
         if st.button("Generate Meal Plans!", type="primary", use_container_width=True):
             reset_session()
 
-            with st.spinner(f"Generating {num_options} meal plan options... This may take a minute."):
+            with st.spinner(
+                f"Generating {num_options} meal plan options... This may take a minute."
+            ):
                 try:
-                    plans = generate_meal_plans(num_days, servings, num_options, preferences, use_history_bool)
+                    plans = generate_meal_plans(
+                        num_days, servings, num_options, preferences, use_history_bool
+                    )
                     st.session_state.plans_generated = plans
                     st.success(f"✅ Generated {len(plans)} meal plan options!")
                     st.rerun()
@@ -376,11 +400,15 @@ def main():
         st.markdown("Review the options below and select your preferred plan.")
 
         # Radio button for selection
-        option_labels = [f"Option {i+1}" for i in range(len(st.session_state.plans_generated))]
+        option_labels = [
+            f"Option {i + 1}" for i in range(len(st.session_state.plans_generated))
+        ]
         selected_label = st.radio(
             "Choose your plan:",
             options=option_labels,
-            index=st.session_state.selected_option_index if st.session_state.selected_option_index is not None else 0,
+            index=st.session_state.selected_option_index
+            if st.session_state.selected_option_index is not None
+            else 0,
             horizontal=True,
         )
         st.session_state.selected_option_index = option_labels.index(selected_label)
@@ -391,17 +419,24 @@ def main():
 
             with st.container():
                 if is_selected:
-                    st.markdown('<div class="meal-option selected-option">', unsafe_allow_html=True)
+                    st.markdown(
+                        '<div class="meal-option selected-option">',
+                        unsafe_allow_html=True,
+                    )
                 else:
                     st.markdown('<div class="meal-option">', unsafe_allow_html=True)
 
-                display_meal_plan(plan, idx + 1, show_full_reasoning=False, show_recipe_details=True)
+                display_meal_plan(
+                    plan, idx + 1, show_full_reasoning=False, show_recipe_details=True
+                )
 
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
         # Show AI context/prompts insight
         if st.session_state.history_context:
-            with st.expander("🔍 View AI Context (What the model knows about your preferences)"):
+            with st.expander(
+                "🔍 View AI Context (What the model knows about your preferences)"
+            ):
                 st.markdown("**Past Meal Plan Choices:**")
                 st.text(st.session_state.history_context)
                 st.markdown(
@@ -411,8 +446,12 @@ def main():
         # Select plan button
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
-            if st.button("✅ Select This Plan", type="primary", use_container_width=True):
-                chosen_plan = st.session_state.plans_generated[st.session_state.selected_option_index]
+            if st.button(
+                "✅ Select This Plan", type="primary", use_container_width=True
+            ):
+                chosen_plan = st.session_state.plans_generated[
+                    st.session_state.selected_option_index
+                ]
                 st.session_state.chosen_plan = chosen_plan
 
                 # Update database with choice
@@ -426,7 +465,9 @@ def main():
                     try:
                         shopping_list = generate_shopping_list(chosen_plan)
                         st.session_state.shopping_list = shopping_list
-                        st.success("✅ Plan selected! Scroll down to see your shopping list.")
+                        st.success(
+                            "✅ Plan selected! Scroll down to see your shopping list."
+                        )
                         st.rerun()
                     except Exception as e:
                         st.error(f"❌ Error generating shopping list: {str(e)}")
@@ -466,7 +507,9 @@ def main():
         # Show AI processing insight
         if st.session_state.raw_shopping_list:
             with st.expander("🔍 View AI Processing (How the list was consolidated)"):
-                st.markdown("**Raw Aggregated Shopping List (Before AI Consolidation):**")
+                st.markdown(
+                    "**Raw Aggregated Shopping List (Before AI Consolidation):**"
+                )
                 st.text(st.session_state.raw_shopping_list)
                 st.markdown("---")
                 st.markdown(

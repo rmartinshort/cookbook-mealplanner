@@ -350,7 +350,7 @@ def plan_dinners(
 
             # Display reasoning
             if plan.reasoning:
-                console.print(f"\n  [bold]Why this plan:[/bold]")
+                console.print("\n  [bold]Why this plan:[/bold]")
                 # Truncate reasoning if too long
                 reasoning_lines = plan.reasoning.split("\n")[:3]
                 for line in reasoning_lines:
@@ -370,7 +370,9 @@ def plan_dinners(
 
         # Validate choice
         if choice < 1 or choice > num_options:
-            console.print(f"[red]Invalid choice. Must be between 1 and {num_options}[/red]")
+            console.print(
+                f"[red]Invalid choice. Must be between 1 and {num_options}[/red]"
+            )
             raise typer.Exit(code=1)
 
         # Update database with chosen option
@@ -380,7 +382,9 @@ def plan_dinners(
         chosen_plan = plan_options[chosen_index]
 
         # Display chosen plan
-        console.print(f"\n[bold green]✓ Great choice! Here's your selected plan:[/bold green]\n")
+        console.print(
+            "\n[bold green]✓ Great choice! Here's your selected plan:[/bold green]\n"
+        )
 
         for dinner in chosen_plan.dinners:
             console.print(
@@ -390,7 +394,7 @@ def plan_dinners(
 
         # Display full reasoning for chosen plan
         if chosen_plan.reasoning:
-            console.print(f"\n[bold]Why this plan works:[/bold]")
+            console.print("\n[bold]Why this plan works:[/bold]")
             console.print(chosen_plan.reasoning)
 
         # Show next steps
@@ -413,7 +417,10 @@ def plan_dinners(
 def shopping_list(
     recipe_ids: List[int] = typer.Argument(..., help="Recipe IDs"),
     consolidate: bool = typer.Option(
-        False, "--consolidate", "-c", help="Use AI to consolidate into practical shopping list"
+        False,
+        "--consolidate",
+        "-c",
+        help="Use AI to consolidate into practical shopping list",
     ),
 ):
     """Generate a shopping list from recipe IDs."""
@@ -435,7 +442,9 @@ def shopping_list(
 
         # If consolidate flag is set, use LLM to create practical list
         if consolidate:
-            console.print("[bold blue]Consolidating with AI for practical shopping...[/bold blue]\n")
+            console.print(
+                "[bold blue]Consolidating with AI for practical shopping...[/bold blue]\n"
+            )
             consolidated_text = generator.consolidate_with_llm(shopping_list)
             console.print("[bold green]Consolidated Shopping List:[/bold green]\n")
             console.print(consolidated_text)
@@ -466,7 +475,7 @@ def shopping_list(
             f"[dim]Total ingredients: {sum(len(shopping_list.get_items_by_category(cat)) for cat in shopping_list.get_categories())}[/dim]"
         )
         console.print(
-            f"\n[dim]Tip: Use --consolidate flag for AI-powered practical shopping list[/dim]"
+            "\n[dim]Tip: Use --consolidate flag for AI-powered practical shopping list[/dim]"
         )
 
     except Exception as e:

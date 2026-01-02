@@ -18,7 +18,8 @@ class Ingredient(BaseModel):
         default=None, description="Category (e.g., produce, protein, pantry, dairy)"
     )
     sauce_reference: Optional[str] = Field(
-        default=None, description="If this ingredient is associated with a sauce denoted by a letter (e.g. A, B etc), include this reference here"
+        default=None,
+        description="If this ingredient is associated with a sauce denoted by a letter (e.g. A, B etc), include this reference here",
     )
 
 
@@ -78,7 +79,7 @@ class RecipeExtract(BaseModel):
                         "quantity": "3",
                         "unit": "tbsp",
                         "category": "pantry",
-                        "sauce_reference": "A"
+                        "sauce_reference": "A",
                     },
                 ],
                 "instructions": [
@@ -171,9 +172,7 @@ class DinnerPlanOption(BaseModel):
     plan_json: str = Field(
         description="JSON representation of the DinnerPlan (list of dinners)"
     )
-    reasoning: str = Field(
-        description="LLM reasoning for why this plan was created"
-    )
+    reasoning: str = Field(description="LLM reasoning for why this plan was created")
 
 
 class DinnerPlan(BaseModel):
@@ -182,9 +181,7 @@ class DinnerPlan(BaseModel):
     dinners: List[dict] = Field(
         description="List of dinners, each with day, recipe_id, and recipe_title"
     )
-    reasoning: str = Field(
-        description="Explanation of why these recipes were chosen"
-    )
+    reasoning: str = Field(description="Explanation of why these recipes were chosen")
 
     def get_all_recipe_ids(self) -> List[int]:
         """Extract all recipe IDs from the dinner plan."""
